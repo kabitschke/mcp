@@ -1,30 +1,57 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
-const server = new McpServer({
-    name: "hello-node",
-    version: "1.0.0"
+import express from "express";
+import cors from "cors";
+import { createMcpServer } from "./mcp-server.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse";
+
+const server = express();
+server.use(express.json());
+server.use(cors());
+
+const transports: Record<string, SSEServerTransport> = {};
+
+server.get('/mcp', async (req, res) => {
+    try{
+        const transport = new SSEServerTransport('/mcp-message', res);
+
+        const sessionId = transport.sessionId;
+        transports[sessionId] = transport;
+
+        transport.onclose = () => {
+            delete transports[sessionId];
+        }
+
+        const mcpServer = createMcpServer();
+        await mcpServer.connect(transport);
+
+        console.log('Session ID', sessionId);
+
+    } catch (error) {
+        console.error(error);
+    }
+
 });
 
-//Registrar as tools
+server.post('/mcp-message', async (req, res)=> {
+    const sessionId = req.query['sessionId'] as string | undefined;
 
-server.registerTool(
-    "calculate_bml",
-    {
-      title: "Calculate BML",
-      description: "Calculates the bml of the user receiving his height (in meters) and weight (in kilograms).",
-      inputSchema: {
-        weightKg: z.number().describe("The weight of the user in kilograms"),
-        heightM: z.number().describe("The height of the user in meters")  
-      }
-    },
-    async ({ weightKg, heightM }) => {
-      const bml = weightKg / (heightM * heightM);
-      return {
-        content: [{ type: "text", text: bml.toString() }]
-      };
+    if(!sessionId){
+        res.status(400).send('Missing sessionID pameter');
+        return;
     }
-  );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+    const transport = transports[sessionId];
+    if(transport){
+        res.status(400).send('Session not founf');
+        return;
+    }
+
+    await transport.handlePostMessage(req, res, req.body);
+
+
+});
+
+server.listen(5000, () => {
+    console.log('Server on port 5000');
+});
+
+
