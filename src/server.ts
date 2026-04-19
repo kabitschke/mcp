@@ -3,55 +3,57 @@ import cors from "cors";
 import { createMcpServer } from "./mcp-server.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse";
 
-const server = express();
-server.use(express.json());
-server.use(cors());
+const app = express();
 
-const transports: Record<string, SSEServerTransport> = {};
+app.use(express.json());
+app.use(cors());
 
-server.get('/mcp', async (req, res) => {
-    try{
-        const transport = new SSEServerTransport('/mcp-message', res);
+const transports = new Map<string, SSEServerTransport>();
 
-        const sessionId = transport.sessionId;
-        transports[sessionId] = transport;
+// Endpoint para iniciar conexão SSE
+app.get("/mcp", async (req, res) => {
+  try {
+    const transport = new SSEServerTransport("/mcp-message", res);
 
-        transport.onclose = () => {
-            delete transports[sessionId];
-        }
+    const sessionId = transport.sessionId;
+    transports.set(sessionId, transport);
 
-        const mcpServer = createMcpServer();
-        await mcpServer.connect(transport);
+    transport.onclose = () => {
+      transports.delete(sessionId);
+    };
 
-        console.log('Session ID', sessionId);
+    const mcpServer = createMcpServer();
+    await mcpServer.connect(transport);
 
-    } catch (error) {
-        console.error(error);
-    }
-
+    console.log("Session ID:", sessionId);
+  } catch (error) {
+    console.error("Error on /mcp:", error);
+    res.status(500).end();
+  }
 });
 
-server.post('/mcp-message', async (req, res)=> {
-    const sessionId = req.query['sessionId'] as string | undefined;
+// Endpoint para receber mensagens
+app.post("/mcp-message", async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId as string | undefined;
 
-    if(!sessionId){
-        res.status(400).send('Missing sessionID pameter');
-        return;
+    if (!sessionId) {
+      return res.status(400).send("Missing sessionId parameter");
     }
 
-    const transport = transports[sessionId];
-    if(transport){
-        res.status(400).send('Session not founf');
-        return;
+    const transport = transports.get(sessionId);
+
+    if (!transport) {
+      return res.status(404).send("Session not found");
     }
 
     await transport.handlePostMessage(req, res, req.body);
-
-
+  } catch (error) {
+    console.error("Error on /mcp-message:", error);
+    res.status(500).end();
+  }
 });
 
-server.listen(5000, () => {
-    console.log('Server on port 5000');
+app.listen(5000, () => {
+  console.log("Server running on port 5000");
 });
-
-

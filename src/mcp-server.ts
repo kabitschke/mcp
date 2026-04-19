@@ -2,7 +2,21 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 //import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
+/*
+LOCAL
+"hello-node": {
+  "command": "node",
+  "args": [
+  "/Users/Portaria itacaré/Desktop/mcp/dist/server.js"
+]
+}
 
+URL
+"bml-calculator":{
+      "url": "http://localhost:5000/mcp" 
+    }
+
+*/
 
 
 export const createMcpServer = () => {
